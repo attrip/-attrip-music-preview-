@@ -1,0 +1,51 @@
+name: audio-quality-guard
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  structural-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require development governance files
+        run: |
+          test -f docs/CONSTITUTION.md
+          test -f docs/LOCKED.md
+          test -f docs/DEVELOPMENT_STATE.md
+          test -f docs/LISTENING_LOG.md
+      - name: Validate HTML script syntax
+        run: |
+          python3 - <<'PY'
+          import pathlib, re, subprocess, tempfile, sys
+          files=list(pathlib.Path('.').glob('*.html'))
+          failures=[]
+          for p in files:
+              text=p.read_text(encoding='utf-8')
+              scripts=re.findall(r'<script(?:\s[^>]*)?>(.*?)</script>', text, re.S|re.I)
+              for i,script in enumerate(scripts):
+                  if not script.strip(): continue
+                  with tempfile.NamedTemporaryFile('w',suffix='.js',delete=False) as f:
+                      f.write(script); name=f.name
+                  r=subprocess.run(['node','--check',name],capture_output=True,text=True)
+                  if r.returncode:
+                      failures.append(f'{p} script#{i+1}:\n{r.stderr}')
+          if failures:
+              print('\n'.join(failures)); sys.exit(1)
+          print(f'checked {len(files)} html files')
+          PY
+      - name: Guard against accidental removal of core audio concepts
+        run: |
+          grep -qi "Finger Bass" docs/LOCKED.md
+          grep -qi "user.*Piano" docs/LOCKED.md
+          grep -qi "one meaningful variable" docs/CONSTITUTION.md
+      - name: Validate state fields
+        run: |
+          grep -q "human_required:" docs/DEVELOPMENT_STATE.md
+          grep -q "current_issue:" docs/DEVELOPMENT_STATE.md
+          grep -q "next_action:" docs/DEVELOPMENT_STATE.md
